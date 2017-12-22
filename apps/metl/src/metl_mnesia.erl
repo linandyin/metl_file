@@ -76,13 +76,12 @@ add_req_item(Name) ->
         mnesia:write(Row)
         end,
     mnesia:transaction(F).
-demo(select_req) ->
-    do(qlc:q([X || X <- mnesia:table(req)]));
-demo(select_sequence) ->
-    do(qlc:q([X || X <- mnesia:table(sequence)]));
-demo(reorder) ->
-    do(qlc:q([X#req.comtent || X <- mnesia:table(req),
-        X#req.id < 250
+select(Tb) ->
+    do(qlc:q([X || X <- mnesia:table(Tb)])).
+
+select(Id,Tb) ->
+    do(qlc:q([X#req.comtent || X <- mnesia:table(Tb),
+        X#req.id < Id
     ])).
 %% SQL equivalent
 do(Q) ->
@@ -103,3 +102,15 @@ remove_req_item(Id) ->
         mnesia:delete(Oid)
         end,
     mnesia:transaction(F).
+remove_req_more(Num,Key) ->
+    for(Num,Key).
+
+for(0,_) ->
+    [];
+for(N,Key) when N >= 0 ->
+    Oid = {req, Key},
+    F = fun() ->
+        mnesia:delete(Oid)
+        end,
+    mnesia:transaction(F),
+    for(N-1,Key-1).
