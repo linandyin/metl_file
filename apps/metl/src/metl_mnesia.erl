@@ -81,7 +81,7 @@ select(Tb) ->
 
 select(Id,Tb) ->
     do(qlc:q([X#req.comtent || X <- mnesia:table(Tb),
-        X#req.id < Id
+        X#req.id =< Id
     ])).
 %% SQL equivalent
 do(Q) ->

@@ -21,7 +21,8 @@
     handle_info/2,
     terminate/2,
     code_change/3,
-    content/2
+    content/2,
+    write_file/1
     ]).
 
 -define(SERVER, ?MODULE).
@@ -125,31 +126,34 @@ handle_cast(_Request, State) ->
     {noreply, NewState :: #state{}} |
     {noreply, NewState :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term(), NewState :: #state{}}).
+write_file([]) -> [];
+write_file(L) ->
+    [F|N] = L,
+    #{<<"logs">> := Logs, <<"headers">> := Headers } = jsx:decode(F,[return_maps]),
+    [H|[]] = Logs,
+    App_log = jsx:decode(maps:get(app_log,maps:from_list(ets:lookup(get(tableid),app_log))),[return_maps]),
+    App_log1 = maps:get(list_to_binary(integer_to_list(maps:get(<<"app_id">>,Headers))),App_log),
+    [Db_b|[]] = maps:keys(maps:get(maps:get(<<"log_type">>,Headers),App_log1)),
+    Db_s = binary_to_list(Db_b),
+    Tb_b = maps:get(Db_b,maps:get(maps:get(<<"log_type">>,Headers),App_log1)),
+    Tb_s = binary_to_list(Tb_b),
+    Table_info = maps:get(<<"fields">>,maps:get(Tb_b,jsx:decode(maps:get(table_info,maps:from_list(ets:lookup(get(tableid),table_info))),[return_maps]))),
+    file:make_dir(Db_s),
+    file:make_dir(Db_s ++ "\\" ++ Tb_s),
+    {{Year,Month,Date},{Hour,_,_}} = calendar:local_time(),
+    Filename = integer_to_list(Year) ++ "-" ++ integer_to_list(Month) ++ "-" ++ integer_to_list(Date) ++ "-" ++integer_to_list(Hour) ++ ".csv",
+    {ok, S} = file:open(Db_s ++  "\\"++ Tb_s ++"\\"  ++ Filename , [append]),
+    io:format(S,"~s~n",[content(Table_info,H)]),
+    write_file(N).
+
+
 
 do_loop() ->
     Key = mnesia:dirty_update_counter(sequence, req, 0),
     if
         Key >= 10 ->
             Temp = metl_mnesia:select(10,req),
-            io:format("~p~n",[Temp]),
-            {atomic,[{_,_,A}]} = metl_mnesia:get_plan(Key),
-            #{<<"logs">> := Logs, <<"headers">> := Headers } = jsx:decode(A,[return_maps]),
-            [H|[]] = Logs,
-            App_log = jsx:decode(maps:get(app_log,maps:from_list(ets:lookup(get(tableid),app_log))),[return_maps]),
-            App_log1 = maps:get(list_to_binary(integer_to_list(maps:get(<<"app_id">>,Headers))),App_log),
-            [Db_b|[]] = maps:keys(maps:get(maps:get(<<"log_type">>,Headers),App_log1)),
-            Db_s = binary_to_list(Db_b),
-            Tb_b = maps:get(Db_b,maps:get(maps:get(<<"log_type">>,Headers),App_log1)),
-            Tb_s = binary_to_list(Tb_b),
-            Table_info = maps:get(<<"fields">>,maps:get(Tb_b,jsx:decode(maps:get(table_info,maps:from_list(ets:lookup(get(tableid),table_info))),[return_maps]))),
-            file:make_dir(Db_s),
-            file:make_dir(Db_s ++ "\\" ++ Tb_s),
-            {{Year,Month,Date},{Hour,_,_}} = calendar:local_time(),
-            Filename = integer_to_list(Year) ++ "-" ++ integer_to_list(Month) ++ "-" ++ integer_to_list(Date) ++ "-" ++integer_to_list(Hour) ++ ".csv",
-            {ok, S} = file:open(Db_s ++  "\\"++ Tb_s ++"\\"  ++ Filename , [append]),
-%%            io:format(S,"~s~n",[content(Table_info,H)]),
-%%            metl_mnesia:remove_req_item(Key),
-%%            mnesia:dirty_update_counter(sequence, req, -1),
+            write_file(Temp),
             metl_mnesia:remove_req_more(10,Key),
             mnesia:dirty_update_counter(sequence,req,-10),
             erlang:send_after(5000,erlang:self(),loop);
