@@ -4,9 +4,9 @@
 %%% @doc
 %%%
 %%% @end
-%%% Created : 18. 十二月 2017 13:02
+%%% Created : 25. 十二月 2017 10:47
 %%%-------------------------------------------------------------------
--module(web_mnesia).
+-module(sub_process_1).
 -author("linzexin").
 
 -behaviour(gen_server).
@@ -60,7 +60,6 @@ start_link() ->
     {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term()} | ignore).
 init([]) ->
-    mnesia:start(),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------

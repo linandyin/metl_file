@@ -21,6 +21,7 @@ start(_StartType, _StartArgs) ->
     cowboy:start_http(my_http_listener, 100, [{port, 1234}],
         [{env, [{dispatch, Dispatch}]}]
     ),
+    metl_mnesia:do_this_once(),
     metl_sup:start_link().
 
 %%--------------------------------------------------------------------

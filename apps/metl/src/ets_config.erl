@@ -4,9 +4,9 @@
 %%% @doc
 %%%
 %%% @end
-%%% Created : 19. 十二月 2017 16:32
+%%% Created : 25. 十二月 2017 17:23
 %%%-------------------------------------------------------------------
--module(web_writefile).
+-module(ets_config).
 -author("linzexin").
 
 -behaviour(gen_server).
@@ -20,10 +20,7 @@
     handle_cast/2,
     handle_info/2,
     terminate/2,
-    code_change/3,
-    content/2,
-    write_file/1
-    ]).
+    code_change/3]).
 
 -define(SERVER, ?MODULE).
 
@@ -63,8 +60,15 @@ start_link() ->
     {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term()} | ignore).
 init([]) ->
-    erlang:send_after(1000,erlang:self(),loop),
+    {ok,Bin} = file:read_file("app_log.json"),
+    {ok,Bin1} = file:read_file("table_info.json"),
+    ets:new(test,[ordered_set,named_table,public]),
+    #{<<"10002">> := AppId } = jsx:decode(Bin,[return_maps]),
+    ets:insert(test,{"10002" ++ "/"  ++ "test_table",maps:get(<<"test_table">>,AppId)}),
+    %%io:format("~p~n",[ets:lookup(test,"10002" ++ "/"  ++ "test_table")]),
+    ets:insert(test,{table_info,Bin1}),
     {ok, #state{}}.
+
 %%--------------------------------------------------------------------
 %% @private
 %% @doc
@@ -80,18 +84,9 @@ init([]) ->
     {noreply, NewState :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term(), Reply :: term(), NewState :: #state{}} |
     {stop, Reason :: term(), NewState :: #state{}}).
-
-content([],_)  -> [];
-content([H1|L1],B) ->
-    Temp = maps:get(H1,B),
-    if
-        is_integer(Temp) -> integer_to_list(Temp) ++ "\t" ++ content(L1,B);
-        is_binary(Temp) -> binary_to_list(Temp) ++ "\t" ++ content(L1,B);
-        is_boolean(Temp) -> atom_to_list(Temp) ++ "\t" ++ content(L1,B)
-    end.
-
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
+
 %%--------------------------------------------------------------------
 %% @private
 %% @doc
@@ -120,41 +115,7 @@ handle_cast(_Request, State) ->
     {noreply, NewState :: #state{}} |
     {noreply, NewState :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term(), NewState :: #state{}}).
-write_file([]) -> [];
-write_file(L) ->
-    [F|N] = L,
-    #{<<"logs">> := Logs, <<"headers">> := Headers } = jsx:decode(F,[return_maps]),
-    [H|[]] = Logs,
-    AppId = integer_to_list(maps:get(<<"app_id">>,Headers)),
-    LogType = binary_to_list(maps:get(<<"log_type">>,Headers)),
-    AppLog = maps:get(AppId ++ "/" ++ LogType,maps:from_list(ets:lookup(test,AppId ++ "/" ++ LogType))),
-    [DbB|[]] = maps:keys(AppLog),
-    DbS = binary_to_list(DbB),
-    TbB = maps:get(DbB,AppLog),
-    TbS = binary_to_list(TbB),
-    TableInfo = maps:get(<<"fields">>,maps:get(TbB,jsx:decode(maps:get(table_info,maps:from_list(ets:lookup(test,table_info))),[return_maps]))),
-    file:make_dir(DbS),
-    file:make_dir(DbS ++ "\\" ++ TbS),
-    {{Year,Month,Date},{Hour,_,_}} = calendar:local_time(),
-    Filename = integer_to_list(Year) ++ "-" ++ integer_to_list(Month) ++ "-" ++ integer_to_list(Date) ++ "-" ++integer_to_list(Hour) ++ ".csv",
-    {ok, S} = file:open(DbS ++  "\\"++ TbS ++"\\"  ++ Filename , [append]),
-    io:format(S,"~s~n",[content(TableInfo,H)]),
-    write_file(N).
-do_loop() ->
-    Key = mnesia:dirty_update_counter(sequence, req, 0),
-    if
-        Key >= 10 ->
-            Temp = metl_mnesia:select(10,req),
-            write_file(Temp),
-            metl_mnesia:remove_req_more(10,Key),
-            mnesia:dirty_update_counter(sequence,req,-10),
-            erlang:send_after(5000,erlang:self(),loop);
-        true -> erlang:send_after(5000,erlang:self(),loop)
-    end,
-    ok.
-handle_info(loop, State) ->
-    erlang:send_after(5000,erlang:self(),loop),
-    do_loop(),
+handle_info(_Info, State) ->
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -168,7 +129,6 @@ handle_info(loop, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-
 -spec(terminate(Reason :: (normal | shutdown | {shutdown, term()} | term()),
     State :: #state{}) -> term()).
 terminate(_Reason, _State) ->

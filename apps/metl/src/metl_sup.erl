@@ -29,8 +29,9 @@ start_link() ->
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init([]) ->
     Children = [
-        {web_mnesia, {web_mnesia,start_link,[]},permanent,10000,worker,[web_mnesia]},
-        {web_writefile, {web_writefile,start_link,[]},permanent,10000,worker,[web_writefile]}
+        {web_writefile, {web_writefile,start_link,[]},permanent,10000,worker,[web_writefile]},
+        {ets_config, {ets_config,start_link,[]},permanent,10000,worker,[ets_config]},
+        {sub_process_1, {sub_process_1,start_link,[]},permanent,10000,worker,[sub_process_1]}
     ],
     {ok, { {one_for_one, 0, 1},Children} }.
 
