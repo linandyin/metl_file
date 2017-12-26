@@ -62,11 +62,19 @@ start_link() ->
 init([]) ->
     {ok,Bin} = file:read_file("app_log.json"),
     {ok,Bin1} = file:read_file("table_info.json"),
-    ets:new(test,[ordered_set,named_table,public]),
+    ets:new(file_tb,[ordered_set,named_table,public]),
+%%    ets:insert(file_tb,{lasttime,calendar:local_time()}),
+%%    {{LastYear,LastMonth,LastDate},{LastHour,_,_}} = maps:get(lasttime,maps:from_list(ets:lookup(file_tb,lasttime))),
+%%    Lasttime = integer_to_list(LastYear) ++ "-" ++ integer_to_list(LastMonth) ++ "-" ++ integer_to_list(LastDate) ++ "-" ++ integer_to_list(LastHour),
+%%    {{NowYear,NowMonth,NowDate},{NowHour,_,_}} = calendar:local_time(),
+%%    Nowtime = integer_to_list(NowYear) ++ "-" ++ integer_to_list(NowMonth) ++ "-" ++ integer_to_list(NowDate) ++ "-" ++ integer_to_list(NowHour),
+%%    io:format("~p~n",[ets:first(file_tb)]),
+    ets:new(table_info,[ordered_set,named_table,public]),
+    ets:new(app_log,[ordered_set,named_table,public]),
     #{<<"10002">> := AppId } = jsx:decode(Bin,[return_maps]),
-    ets:insert(test,{"10002" ++ "/"  ++ "test_table",maps:get(<<"test_table">>,AppId)}),
-    %%io:format("~p~n",[ets:lookup(test,"10002" ++ "/"  ++ "test_table")]),
-    ets:insert(test,{table_info,Bin1}),
+    ets:insert(app_log,{"10002" ++ "/"  ++ "test_table",maps:get(<<"test_table">>,AppId)}),
+    #{<<"database">> := DataBase } = jsx:decode(Bin1,[return_maps]),
+    ets:insert(table_info,{"database" ++ "/" ++ "test_table",maps:get(<<"test_table">>,DataBase)}),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------

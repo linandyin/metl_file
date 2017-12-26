@@ -81,14 +81,10 @@ init([]) ->
     {stop, Reason :: term(), Reply :: term(), NewState :: #state{}} |
     {stop, Reason :: term(), NewState :: #state{}}).
 
-content([],_)  -> [];
+content([],_)  -> [<<"\t\n">>];
 content([H1|L1],B) ->
     Temp = maps:get(H1,B),
-    if
-        is_integer(Temp) -> integer_to_list(Temp) ++ "\t" ++ content(L1,B);
-        is_binary(Temp) -> binary_to_list(Temp) ++ "\t" ++ content(L1,B);
-        is_boolean(Temp) -> atom_to_list(Temp) ++ "\t" ++ content(L1,B)
-    end.
+    [[Temp|[<<"\t">>]]| content(L1,B)].
 
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
@@ -127,24 +123,41 @@ write_file(L) ->
     [H|[]] = Logs,
     AppId = integer_to_list(maps:get(<<"app_id">>,Headers)),
     LogType = binary_to_list(maps:get(<<"log_type">>,Headers)),
-    AppLog = maps:get(AppId ++ "/" ++ LogType,maps:from_list(ets:lookup(test,AppId ++ "/" ++ LogType))),
+    AppLog = maps:get(AppId ++ "/" ++ LogType,maps:from_list(ets:lookup(app_log,AppId ++ "/" ++ LogType))),
     [DbB|[]] = maps:keys(AppLog),
     DbS = binary_to_list(DbB),
     TbB = maps:get(DbB,AppLog),
     TbS = binary_to_list(TbB),
-    TableInfo = maps:get(<<"fields">>,maps:get(TbB,jsx:decode(maps:get(table_info,maps:from_list(ets:lookup(test,table_info))),[return_maps]))),
+    TableInfo = maps:get(DbS ++ "/" ++ TbS,maps:from_list(ets:lookup(table_info,DbS ++ "/" ++ TbS))),
+    TableFields = maps:get(<<"fields">>,TableInfo),
     file:make_dir(DbS),
     file:make_dir(DbS ++ "\\" ++ TbS),
     {{Year,Month,Date},{Hour,_,_}} = calendar:local_time(),
-    Filename = integer_to_list(Year) ++ "-" ++ integer_to_list(Month) ++ "-" ++ integer_to_list(Date) ++ "-" ++integer_to_list(Hour) ++ ".csv",
-    {ok, S} = file:open(DbS ++  "\\"++ TbS ++"\\"  ++ Filename , [append]),
-    io:format(S,"~s~n",[content(TableInfo,H)]),
+    Filename = integer_to_list(Year) ++ "-" ++ integer_to_list(Month) ++ "-" ++ integer_to_list(Date) ++ "-" ++ integer_to_list(Hour) ++ ".csv",
+    List = ets:lookup(file_tb,DbS ++  "\\"++ TbS ++"\\"  ++ Filename),
+    case List of
+         [] ->
+             case ets:info(file_tb,size) of
+                 0 ->
+                     {ok,S} = file:open(DbS ++  "\\"++ TbS ++"\\"  ++ Filename,[append]),
+                     ets:insert(file_tb,{DbS ++  "\\"++ TbS ++"\\"  ++ Filename,S}),
+                     file:write(S,content(TableFields,H));
+                 _ ->
+                     file:close(ets:lookup(file_tb,ets:first(file_tb))),
+                     {ok,S} = file:open(DbS ++  "\\"++ TbS ++"\\"  ++ Filename,[append]),
+                     ets:insert(file_tb,{DbS ++  "\\"++ TbS ++"\\"  ++ Filename,S}),
+                     file:write(S,content(TableFields,H))
+             end;
+         _ ->
+             S = maps:get(DbS ++  "\\" ++ TbS ++ "\\"  ++ Filename,maps:from_list(List)),
+             file:write(S,content(TableFields,H))
+    end,
     write_file(N).
 do_loop() ->
     Key = mnesia:dirty_update_counter(sequence, req, 0),
     if
         Key >= 10 ->
-            Temp = metl_mnesia:select(10,req),
+            Temp = metl_mnesia:select(10,Key,req),
             write_file(Temp),
             metl_mnesia:remove_req_more(10,Key),
             mnesia:dirty_update_counter(sequence,req,-10),

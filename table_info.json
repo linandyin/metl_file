@@ -1,16 +1,18 @@
 {
-  "test_table": {
-      "fields": [
-        "via",
-        "step",
-        "ip",
-        "device_id",
-        "device_type",
-        "os",
-        "ad_url",
-        "mtime",
-        "project_id",
-        "dt"
-    ]
+  "database" : {
+    "test_table": {
+        "fields": [
+          "via",
+          "step",
+          "ip",
+          "device_id",
+          "device_type",
+          "os",
+          "ad_url",
+          "mtime",
+          "project_id",
+          "dt"
+      ]
+    }
   }
 }

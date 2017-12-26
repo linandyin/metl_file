@@ -21,7 +21,7 @@
     create_table_sequence/0,
     add_req_item/1,
     select/1,
-    select/2,
+    select/3,
     reset_tables/0,
     remove_req_more/2,
     remove_req_item/1
@@ -109,9 +109,9 @@ add_req_item(Name) ->
 select(Tb) ->
     do(qlc:q([X || X <- mnesia:table(Tb)])).
 
-select(Id,Tb) ->
+select(Len,Id,Tb) ->
     do(qlc:q([X#req.comtent || X <- mnesia:table(Tb),
-        X#req.id =< Id
+        X#req.id =< Id,X#req.id >= Id-Len
     ])).
 %% SQL equivalent
 do(Q) ->
