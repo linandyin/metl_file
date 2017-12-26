@@ -4,9 +4,9 @@
 %%% @doc
 %%%
 %%% @end
-%%% Created : 25. 十二月 2017 17:23
+%%% Created : 26. 十二月 2017 17:24
 %%%-------------------------------------------------------------------
--module(ets_config).
+-module(sub_process_2).
 -author("linzexin").
 
 -behaviour(gen_server).
@@ -20,7 +20,9 @@
     handle_cast/2,
     handle_info/2,
     terminate/2,
-    code_change/3]).
+    code_change/3,
+    content/2,
+    write_file/1]).
 
 -define(SERVER, ?MODULE).
 
@@ -60,15 +62,6 @@ start_link() ->
     {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term()} | ignore).
 init([]) ->
-    {ok,Bin} = file:read_file("app_log.json"),
-    {ok,Bin1} = file:read_file("table_info.json"),
-    ets:new(file_tb,[ordered_set,named_table,public]),
-    ets:new(table_info,[ordered_set,named_table,public]),
-    ets:new(app_log,[ordered_set,named_table,public]),
-    #{<<"10002">> := AppId } = jsx:decode(Bin,[return_maps]),
-    ets:insert(app_log,{"10002" ++ "/"  ++ "test_table",maps:get(<<"test_table">>,AppId)}),
-    #{<<"database">> := DataBase } = jsx:decode(Bin1,[return_maps]),
-    ets:insert(table_info,{"database" ++ "/" ++ "test_table",maps:get(<<"test_table">>,DataBase)}),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -86,7 +79,50 @@ init([]) ->
     {noreply, NewState :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term(), Reply :: term(), NewState :: #state{}} |
     {stop, Reason :: term(), NewState :: #state{}}).
+content([],_)  -> [<<"\t\n">>];
+content([H1|L1],B) ->
+    Temp = maps:get(H1,B),
+    [[Temp|[<<"\t">>]]| content(L1,B)].
+write_file([]) -> [];
+write_file(L) ->
+    [F|N] = L,
+    #{<<"logs">> := Logs, <<"headers">> := Headers } = jsx:decode(F,[return_maps]),
+    [H|[]] = Logs,
+    AppId = integer_to_list(maps:get(<<"app_id">>,Headers)),
+    LogType = binary_to_list(maps:get(<<"log_type">>,Headers)),
+    AppLog = maps:get(AppId ++ "/" ++ LogType,maps:from_list(ets:lookup(app_log,AppId ++ "/" ++ LogType))),
+    [DbB|[]] = maps:keys(AppLog),
+    DbS = binary_to_list(DbB),
+    TbB = maps:get(DbB,AppLog),
+    TbS = binary_to_list(TbB),
+    TableInfo = maps:get(DbS ++ "/" ++ TbS,maps:from_list(ets:lookup(table_info,DbS ++ "/" ++ TbS))),
+    TableFields = maps:get(<<"fields">>,TableInfo),
+    file:make_dir(DbS),
+    file:make_dir(DbS ++ "\\" ++ TbS),
+    {{Year,Month,Date},{Hour,_,_}} = calendar:local_time(),
+    Filename = integer_to_list(Year) ++ "-" ++ integer_to_list(Month) ++ "-" ++ integer_to_list(Date) ++ "-" ++ integer_to_list(Hour) ++ ".csv",
+    List = ets:lookup(file_tb,DbS ++  "\\"++ TbS ++"\\"  ++ Filename),
+    case List of
+        [] ->
+            case ets:info(file_tb,size) of
+                0 ->
+                    {ok,S} = file:open(DbS ++  "\\"++ TbS ++"\\"  ++ Filename,[append]),
+                    ets:insert(file_tb,{DbS ++  "\\"++ TbS ++"\\"  ++ Filename,S}),
+                    file:write(S,content(TableFields,H));
+                _ ->
+                    file:close(ets:lookup(file_tb,ets:first(file_tb))),
+                    {ok,S} = file:open(DbS ++  "\\"++ TbS ++"\\"  ++ Filename,[append]),
+                    ets:insert(file_tb,{DbS ++  "\\"++ TbS ++"\\"  ++ Filename,S}),
+                    file:write(S,content(TableFields,H))
+            end;
+        _ ->
+            S = maps:get(DbS ++  "\\" ++ TbS ++ "\\"  ++ Filename,maps:from_list(List)),
+            file:write(S,content(TableFields,H))
+    end,
+    write_file(N).
 handle_call(_Request, _From, State) ->
+    io:format("~p~n",[_Request]),
+    write_file(_Request),
     {reply, ok, State}.
 
 %%--------------------------------------------------------------------

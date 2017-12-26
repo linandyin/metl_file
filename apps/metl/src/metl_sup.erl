@@ -31,7 +31,8 @@ init([]) ->
     Children = [
         {web_writefile, {web_writefile,start_link,[]},permanent,10000,worker,[web_writefile]},
         {ets_config, {ets_config,start_link,[]},permanent,10000,worker,[ets_config]},
-        {sub_process_1, {sub_process_1,start_link,[]},permanent,10000,worker,[sub_process_1]}
+        {sub_process_1, {sub_process_1,start_link,[]},permanent,10000,worker,[sub_process_1]},
+        {sub_process_2, {sub_process_2,start_link,[]},permanent,10000,worker,[sub_process_2]}
     ],
     {ok, { {one_for_one, 0, 1},Children} }.
 

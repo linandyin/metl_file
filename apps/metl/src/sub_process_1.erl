@@ -20,7 +20,10 @@
     handle_cast/2,
     handle_info/2,
     terminate/2,
-    code_change/3]).
+    code_change/3,
+    content/2,
+    write_file/1]
+).
 
 -define(SERVER, ?MODULE).
 
@@ -60,6 +63,7 @@ start_link() ->
     {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term()} | ignore).
 init([]) ->
+    gen_server:call(web_writefile,requ),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -77,7 +81,49 @@ init([]) ->
     {noreply, NewState :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term(), Reply :: term(), NewState :: #state{}} |
     {stop, Reason :: term(), NewState :: #state{}}).
+content([],_)  -> [<<"\t\n">>];
+content([H1|L1],B) ->
+    Temp = maps:get(H1,B),
+    [[Temp|[<<"\t">>]]| content(L1,B)].
+write_file([]) -> [];
+write_file(L) ->
+    [F|N] = L,
+    #{<<"logs">> := Logs, <<"headers">> := Headers } = jsx:decode(F,[return_maps]),
+    [H|[]] = Logs,
+    AppId = integer_to_list(maps:get(<<"app_id">>,Headers)),
+    LogType = binary_to_list(maps:get(<<"log_type">>,Headers)),
+    AppLog = maps:get(AppId ++ "/" ++ LogType,maps:from_list(ets:lookup(app_log,AppId ++ "/" ++ LogType))),
+    [DbB|[]] = maps:keys(AppLog),
+    DbS = binary_to_list(DbB),
+    TbB = maps:get(DbB,AppLog),
+    TbS = binary_to_list(TbB),
+    TableInfo = maps:get(DbS ++ "/" ++ TbS,maps:from_list(ets:lookup(table_info,DbS ++ "/" ++ TbS))),
+    TableFields = maps:get(<<"fields">>,TableInfo),
+    file:make_dir(DbS),
+    file:make_dir(DbS ++ "\\" ++ TbS),
+    {{Year,Month,Date},{Hour,_,_}} = calendar:local_time(),
+    Filename = integer_to_list(Year) ++ "-" ++ integer_to_list(Month) ++ "-" ++ integer_to_list(Date) ++ "-" ++ integer_to_list(Hour) ++ ".csv",
+    List = ets:lookup(file_tb,DbS ++  "\\"++ TbS ++"\\"  ++ Filename),
+    case List of
+        [] ->
+            case ets:info(file_tb,size) of
+                0 ->
+                    {ok,S} = file:open(DbS ++  "\\"++ TbS ++"\\"  ++ Filename,[append]),
+                    ets:insert(file_tb,{DbS ++  "\\"++ TbS ++"\\"  ++ Filename,S}),
+                    file:write(S,content(TableFields,H));
+                _ ->
+                    file:close(ets:lookup(file_tb,ets:first(file_tb))),
+                    {ok,S} = file:open(DbS ++  "\\"++ TbS ++"\\"  ++ Filename,[append]),
+                    ets:insert(file_tb,{DbS ++  "\\"++ TbS ++"\\"  ++ Filename,S}),
+                    file:write(S,content(TableFields,H))
+            end;
+        _ ->
+            S = maps:get(DbS ++  "\\" ++ TbS ++ "\\"  ++ Filename,maps:from_list(List)),
+            file:write(S,content(TableFields,H))
+    end,
+    write_file(N).
 handle_call(_Request, _From, State) ->
+    write_file(_Request),
     {reply, ok, State}.
 
 %%--------------------------------------------------------------------
