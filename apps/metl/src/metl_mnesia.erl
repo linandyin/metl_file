@@ -23,7 +23,7 @@
     select/1,
     select/3,
     reset_tables/0,
-    remove_req_more/2,
+    remove_more/3,
     remove_req_item/1
 ]).
 
@@ -127,12 +127,12 @@ remove_req_item(Id) ->
     Oid = {req, Id},
     mnesia:dirty_delete(Oid).
 
-remove_req_more(Num,Key) ->
-    for(Num,Key).
+remove_more(Tb,Num,Key) ->
+    for(Tb,Num,Key).
 
-for(0,_) ->
+for(_,0,_) ->
     [];
-for(N,Key) when N >= 0 ->
-    Oid = {req, Key},
+for(Tb,N,Key) when N >= 0 ->
+    Oid = {Tb, Key},
     mnesia:dirty_delete(Oid),
-    for(N-1,Key-1).
+    for(Tb,N-1,Key-1).

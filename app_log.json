@@ -1,7 +1,8 @@
 {
   "10002" : {
     "test_table": {
-              "database": "test_table"
+              "database": "test_database",
+              "table" : "test_table"
     }
   }
 }

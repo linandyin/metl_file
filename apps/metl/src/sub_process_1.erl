@@ -63,7 +63,9 @@ start_link() ->
     {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term()} | ignore).
 init([]) ->
-    gen_server:call(web_writefile,requ),
+%%    Pid = erlang:self(),
+%%    io:format("~p~n",[Pid]),
+%%    register(sub_process_1,Pid),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -90,40 +92,40 @@ write_file(L) ->
     [F|N] = L,
     #{<<"logs">> := Logs, <<"headers">> := Headers } = jsx:decode(F,[return_maps]),
     [H|[]] = Logs,
-    AppId = integer_to_list(maps:get(<<"app_id">>,Headers)),
-    LogType = binary_to_list(maps:get(<<"log_type">>,Headers)),
-    AppLog = maps:get(AppId ++ "/" ++ LogType,maps:from_list(ets:lookup(app_log,AppId ++ "/" ++ LogType))),
-    [DbB|[]] = maps:keys(AppLog),
-    DbS = binary_to_list(DbB),
-    TbB = maps:get(DbB,AppLog),
-    TbS = binary_to_list(TbB),
-    TableInfo = maps:get(DbS ++ "/" ++ TbS,maps:from_list(ets:lookup(table_info,DbS ++ "/" ++ TbS))),
+    AppId = maps:get(<<"app_id">>,Headers),
+    LogType = maps:get(<<"log_type">>,Headers),
+    Fields = maps:get({AppId,LogType},maps:from_list(ets:lookup(app_log,{AppId,LogType}))),
+    Database = maps:get(<<"database">>,Fields),
+    Table = maps:get(<<"table">>,Fields),
+    DbS = binary_to_list(Database),
+    TbS = binary_to_list(Table),
+    TableInfo = maps:get({Database,Table},maps:from_list(ets:lookup(table_info,{Database,Table}))),
     TableFields = maps:get(<<"fields">>,TableInfo),
     file:make_dir(DbS),
-    file:make_dir(DbS ++ "\\" ++ TbS),
-    {{Year,Month,Date},{Hour,_,_}} = calendar:local_time(),
-    Filename = integer_to_list(Year) ++ "-" ++ integer_to_list(Month) ++ "-" ++ integer_to_list(Date) ++ "-" ++ integer_to_list(Hour) ++ ".csv",
-    List = ets:lookup(file_tb,DbS ++  "\\"++ TbS ++"\\"  ++ Filename),
+    file:make_dir(lists:concat([DbS,"\\",TbS])),
+    List = ets:lookup(file_tb,{DbS,TbS}),
     case List of
         [] ->
-            case ets:info(file_tb,size) of
-                0 ->
-                    {ok,S} = file:open(DbS ++  "\\"++ TbS ++"\\"  ++ Filename,[append]),
-                    ets:insert(file_tb,{DbS ++  "\\"++ TbS ++"\\"  ++ Filename,S}),
-                    file:write(S,content(TableFields,H));
-                _ ->
-                    file:close(ets:lookup(file_tb,ets:first(file_tb))),
-                    {ok,S} = file:open(DbS ++  "\\"++ TbS ++"\\"  ++ Filename,[append]),
-                    ets:insert(file_tb,{DbS ++  "\\"++ TbS ++"\\"  ++ Filename,S}),
-                    file:write(S,content(TableFields,H))
-            end;
+            {{Year,Month,Date},{Hour,_,_}} = calendar:local_time(),
+            Filename = lists:concat([Year,"-",Month,"-",Date,"-",Hour,".csv"]),
+            {ok,S} = file:open(lists:concat([DbS,"\\",TbS,"\\",Filename]),[append]),
+            ets:insert(file_tb,{{DbS,TbS},{Filename,S}});
         _ ->
-            S = maps:get(DbS ++  "\\" ++ TbS ++ "\\"  ++ Filename,maps:from_list(List)),
-            file:write(S,content(TableFields,H))
+            {OldFilename,OldS} = maps:get({DbS,TbS},maps:from_list(ets:lookup(file_tb,{DbS,TbS}))),
+            {{Year,Month,Date},{Hour,_,_}} = calendar:local_time(),
+            NewFilename = lists:concat([Year,"-",Month,"-",Date,"-",Hour,".csv"]),
+            if
+                OldFilename =:= NewFilename ->
+                    file:write(OldS,content(TableFields,H));
+                true ->
+                    file:close(OldS),
+                    ets:delete(file_tb,{DbS,TbS}),
+                    {ok,NewS} = file:open(lists:concat([DbS,"\\",TbS,"\\",NewFilename]),[append]),
+                    ets:insert(file_tb,{{DbS,TbS},{NewFilename,NewS}})
+            end
     end,
     write_file(N).
 handle_call(_Request, _From, State) ->
-    write_file(_Request),
     {reply, ok, State}.
 
 %%--------------------------------------------------------------------
@@ -154,7 +156,8 @@ handle_cast(_Request, State) ->
     {noreply, NewState :: #state{}} |
     {noreply, NewState :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term(), NewState :: #state{}}).
-handle_info(_Info, State) ->
+handle_info({msg,List}, State) ->
+    write_file(List),
     {noreply, State}.
 
 %%--------------------------------------------------------------------

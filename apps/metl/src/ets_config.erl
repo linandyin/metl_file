@@ -20,7 +20,12 @@
     handle_cast/2,
     handle_info/2,
     terminate/2,
-    code_change/3]).
+    code_change/3,
+    init_app_log/0,
+    tra_database/3,
+    tra_table/4,
+    init_table_info/0,
+    init_file_tb/0]).
 
 -define(SERVER, ?MODULE).
 
@@ -59,16 +64,42 @@ start_link() ->
 -spec(init(Args :: term()) ->
     {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term()} | ignore).
-init([]) ->
+tra_table(_,[],_,_) -> [];
+tra_table(Key,List,Maps,EtsTable) ->
+    [H|L] = List,
+    Fileds = maps:get(H,Maps),
+    ets:insert(EtsTable,{{Key,H},Fileds}),
+    tra_table(Key,L,Maps,EtsTable),
+    ok.
+tra_database([],_,_) -> [];
+tra_database(List,Maps,EtsTable) ->
+    [H|L] = List,
+    TablesMaps = maps:get(H,Maps),
+    TableList = maps:keys(TablesMaps),
+    tra_table(H,TableList,TablesMaps,EtsTable),
+    tra_database(L,Maps,EtsTable),
+    ok.
+init_app_log() ->
+    ets:new(app_log,[set,named_table,public]),
     {ok,Bin} = file:read_file("app_log.json"),
-    {ok,Bin1} = file:read_file("table_info.json"),
-    ets:new(file_tb,[ordered_set,named_table,public]),
-    ets:new(table_info,[ordered_set,named_table,public]),
-    ets:new(app_log,[ordered_set,named_table,public]),
-    #{<<"10002">> := AppId } = jsx:decode(Bin,[return_maps]),
-    ets:insert(app_log,{"10002" ++ "/"  ++ "test_table",maps:get(<<"test_table">>,AppId)}),
-    #{<<"database">> := DataBase } = jsx:decode(Bin1,[return_maps]),
-    ets:insert(table_info,{"database" ++ "/" ++ "test_table",maps:get(<<"test_table">>,DataBase)}),
+    AppLogMaps = jsx:decode(Bin,[return_maps]),
+    AppLogList = maps:keys(AppLogMaps),
+    tra_database(AppLogList,AppLogMaps,app_log),
+    ok.
+init_table_info() ->
+    ets:new(table_info,[set,named_table,public]),
+    {ok,Bin} = file:read_file("table_info.json"),
+    TableInfoMaps = jsx:decode(Bin,[return_maps]),
+    TableInfoList = maps:keys(TableInfoMaps),
+    tra_database(TableInfoList,TableInfoMaps,table_info),
+    ok.
+init_file_tb() ->
+    ets:new(file_tb,[set,named_table,public]),
+    ok.
+init([]) ->
+    init_app_log(),
+    init_table_info(),
+    init_file_tb(),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------

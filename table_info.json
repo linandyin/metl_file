@@ -1,5 +1,5 @@
 {
-  "database" : {
+  "test_database" : {
     "test_table": {
         "fields": [
           "via",

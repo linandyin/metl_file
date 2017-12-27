@@ -115,10 +115,9 @@ do_loop() ->
     if
         Key >= 10 ->
             Temp = metl_mnesia:select(10,Key,req),
-            gen_server:call(sub_process_1,lists:sublist(Temp,5)),
-            gen_server:call(sub_process_1,lists:sublist(Temp,6,5)),
-            %%write_file(Temp),
-            metl_mnesia:remove_req_more(10,Key),
+            erlang:send(sub_process_1,{msg,lists:sublist(Temp,5)}),
+            erlang:send(sub_process_2,{msg,lists:sublist(Temp,6,5)}),
+            metl_mnesia:remove_more(req,10,Key),
             mnesia:dirty_update_counter(sequence,req,-10),
             erlang:send_after(5000,erlang:self(),loop);
         true -> erlang:send_after(5000,erlang:self(),loop)
