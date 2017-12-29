@@ -4,15 +4,15 @@
 %%% @doc
 %%%
 %%% @end
-%%% Created : 26. 十二月 2017 17:24
+%%% Created : 25. 十二月 2017 10:47
 %%%-------------------------------------------------------------------
--module(sub_process_2).
+-module(sub_process).
 -author("linzexin").
 
 -behaviour(gen_server).
 
 %% API
--export([start_link/0]).
+-export([start_link/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -22,7 +22,9 @@
     terminate/2,
     code_change/3,
     content/2,
-    write_file/1]).
+    write_file/1,
+    select_data/1]
+).
 
 -define(SERVER, ?MODULE).
 
@@ -38,10 +40,10 @@
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec(start_link() ->
-    {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
-start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+%%-spec(start_link() ->
+%%    {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
+start_link(Name) ->
+    gen_server:start_link({local, list_to_atom(Name)}, ?MODULE, [], []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -62,6 +64,9 @@ start_link() ->
     {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term()} | ignore).
 init([]) ->
+%%    Pid = erlang:self(),
+%%    io:format("~p~n",[Pid]),
+%%    register(sub_process_1,Pid),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -83,10 +88,9 @@ content([],_)  -> [<<"\t\n">>];
 content([H1|L1],B) ->
     Temp = maps:get(H1,B),
     [[Temp|[<<"\t">>]]| content(L1,B)].
-write_file([]) -> [];
+
 write_file(L) ->
-    [F|N] = L,
-    #{<<"logs">> := Logs, <<"headers">> := Headers } = jsx:decode(F,[return_maps]),
+    #{<<"logs">> := Logs, <<"headers">> := Headers } = jsx:decode(L,[return_maps]),
     [H|[]] = Logs,
     AppId = maps:get(<<"app_id">>,Headers),
     LogType = maps:get(<<"log_type">>,Headers),
@@ -98,7 +102,7 @@ write_file(L) ->
     TableInfo = maps:get({Database,Table},maps:from_list(ets:lookup(table_info,{Database,Table}))),
     TableFields = maps:get(<<"fields">>,TableInfo),
     file:make_dir(DbS),
-    file:make_dir(DbS ++ "\\" ++ TbS),
+    file:make_dir(lists:concat([DbS,"\\",TbS])),
     List = ets:lookup(file_tb,{DbS,TbS}),
     case List of
         [] ->
@@ -119,8 +123,8 @@ write_file(L) ->
                     {ok,NewS} = file:open(lists:concat([DbS,"\\",TbS,"\\",NewFilename]),[append]),
                     ets:insert(file_tb,{{DbS,TbS},{NewFilename,NewS}})
             end
-    end,
-    write_file(N).
+    end.
+
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
@@ -152,8 +156,15 @@ handle_cast(_Request, State) ->
     {noreply, NewState :: #state{}} |
     {noreply, NewState :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term(), NewState :: #state{}}).
-handle_info({msg,List}, State) ->
-    write_file(List),
+select_data([]) -> [];
+select_data([H|L]) ->
+    [{_,_,Mag}|_] = mnesia:dirty_read(req,H),
+    write_file(Mag),
+    mnesia:dirty_delete(req,H),
+    select_data(L).
+
+handle_info({msg,Keys}, State) ->
+    select_data(Keys),
     {noreply, State}.
 
 %%--------------------------------------------------------------------

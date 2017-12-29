@@ -4,9 +4,9 @@
 %%% @doc
 %%%
 %%% @end
-%%% Created : 25. 十二月 2017 10:47
+%%% Created : 19. 十二月 2017 16:32
 %%%-------------------------------------------------------------------
--module(sub_process_1).
+-module(main_process).
 -author("linzexin").
 
 -behaviour(gen_server).
@@ -20,10 +20,8 @@
     handle_cast/2,
     handle_info/2,
     terminate/2,
-    code_change/3,
-    content/2,
-    write_file/1]
-).
+    code_change/3
+    ]).
 
 -define(SERVER, ?MODULE).
 
@@ -63,11 +61,8 @@ start_link() ->
     {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term()} | ignore).
 init([]) ->
-%%    Pid = erlang:self(),
-%%    io:format("~p~n",[Pid]),
-%%    register(sub_process_1,Pid),
+    erlang:send_after(1000,erlang:self(),loop),
     {ok, #state{}}.
-
 %%--------------------------------------------------------------------
 %% @private
 %% @doc
@@ -83,51 +78,10 @@ init([]) ->
     {noreply, NewState :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term(), Reply :: term(), NewState :: #state{}} |
     {stop, Reason :: term(), NewState :: #state{}}).
-content([],_)  -> [<<"\t\n">>];
-content([H1|L1],B) ->
-    Temp = maps:get(H1,B),
-    [[Temp|[<<"\t">>]]| content(L1,B)].
-write_file([]) -> [];
-write_file(L) ->
-    [F|N] = L,
-    #{<<"logs">> := Logs, <<"headers">> := Headers } = jsx:decode(F,[return_maps]),
-    [H|[]] = Logs,
-    AppId = maps:get(<<"app_id">>,Headers),
-    LogType = maps:get(<<"log_type">>,Headers),
-    Fields = maps:get({AppId,LogType},maps:from_list(ets:lookup(app_log,{AppId,LogType}))),
-    Database = maps:get(<<"database">>,Fields),
-    Table = maps:get(<<"table">>,Fields),
-    DbS = binary_to_list(Database),
-    TbS = binary_to_list(Table),
-    TableInfo = maps:get({Database,Table},maps:from_list(ets:lookup(table_info,{Database,Table}))),
-    TableFields = maps:get(<<"fields">>,TableInfo),
-    file:make_dir(DbS),
-    file:make_dir(lists:concat([DbS,"\\",TbS])),
-    List = ets:lookup(file_tb,{DbS,TbS}),
-    case List of
-        [] ->
-            {{Year,Month,Date},{Hour,_,_}} = calendar:local_time(),
-            Filename = lists:concat([Year,"-",Month,"-",Date,"-",Hour,".csv"]),
-            {ok,S} = file:open(lists:concat([DbS,"\\",TbS,"\\",Filename]),[append]),
-            ets:insert(file_tb,{{DbS,TbS},{Filename,S}});
-        _ ->
-            {OldFilename,OldS} = maps:get({DbS,TbS},maps:from_list(ets:lookup(file_tb,{DbS,TbS}))),
-            {{Year,Month,Date},{Hour,_,_}} = calendar:local_time(),
-            NewFilename = lists:concat([Year,"-",Month,"-",Date,"-",Hour,".csv"]),
-            if
-                OldFilename =:= NewFilename ->
-                    file:write(OldS,content(TableFields,H));
-                true ->
-                    file:close(OldS),
-                    ets:delete(file_tb,{DbS,TbS}),
-                    {ok,NewS} = file:open(lists:concat([DbS,"\\",TbS,"\\",NewFilename]),[append]),
-                    ets:insert(file_tb,{{DbS,TbS},{NewFilename,NewS}})
-            end
-    end,
-    write_file(N).
+
+
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
-
 %%--------------------------------------------------------------------
 %% @private
 %% @doc
@@ -156,8 +110,21 @@ handle_cast(_Request, State) ->
     {noreply, NewState :: #state{}} |
     {noreply, NewState :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term(), NewState :: #state{}}).
-handle_info({msg,List}, State) ->
-    write_file(List),
+do_loop() ->
+    Keys = mnesia:dirty_all_keys(req),
+    if
+        erlang:length(Keys) >= 10 ->
+            {Msg1,Msg2} = lists:split((erlang:length(Keys) div 2),Keys),
+            supervisor:start_child(web_write_sup, ["sub_process_1"]),
+            supervisor:start_child(web_write_sup, ["sub_process_2"]),
+            erlang:send(sub_process_1,{msg,Msg1}),
+            erlang:send(sub_process_2,{msg,Msg2}),
+            erlang:send_after(5000,erlang:self(),loop);
+        true -> erlang:send_after(5000,erlang:self(),loop)
+    end,
+    ok.
+handle_info(loop, State) ->
+    do_loop(),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -171,6 +138,7 @@ handle_info({msg,List}, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
+
 -spec(terminate(Reason :: (normal | shutdown | {shutdown, term()} | term()),
     State :: #state{}) -> term()).
 terminate(_Reason, _State) ->

@@ -22,7 +22,9 @@ start(_StartType, _StartArgs) ->
         [{env, [{dispatch, Dispatch}]}]
     ),
     metl_mnesia:do_this_once(),
-    metl_sup:start_link().
+    metl_sup:start_link(),
+    web_write_sup:start_link().
+
 
 %%--------------------------------------------------------------------
 stop(_State) ->
