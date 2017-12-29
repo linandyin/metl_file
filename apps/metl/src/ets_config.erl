@@ -25,7 +25,8 @@
     tra_database/3,
     tra_table/4,
     init_table_info/0,
-    init_file_tb/0]).
+    init_file_tb/0,
+    init_processes/0]).
 
 -define(SERVER, ?MODULE).
 
@@ -96,10 +97,18 @@ init_table_info() ->
 init_file_tb() ->
     ets:new(file_tb,[set,named_table,public]),
     ok.
+init_processes() ->
+    ets:new(processes,[set,named_table,public]),
+    {ok,Bin} = file:read_file("processes.json"),
+    TableInfoMaps = jsx:decode(Bin,[return_maps]),
+    TableInfoList = maps:keys(TableInfoMaps),
+    tra_database(TableInfoList,TableInfoMaps,processes),
+    ok.
 init([]) ->
     init_app_log(),
     init_table_info(),
     init_file_tb(),
+    init_processes(),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------

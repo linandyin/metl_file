@@ -1,8 +1,12 @@
 {
   "10002" : {
-    "test_table": {
+    "test_table_1": {
               "database": "test_database",
-              "table" : "test_table"
+              "table" : "test_table_1"
+    },
+    "test_table_2": {
+      "database": "test_database",
+      "table" : "test_table_2"
     }
   }
 }

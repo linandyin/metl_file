@@ -1,6 +1,6 @@
 {
   "test_database" : {
-    "test_table": {
+    "test_table_1": {
         "fields": [
           "via",
           "step",
@@ -12,6 +12,20 @@
           "mtime",
           "project_id",
           "dt"
+      ]
+    },
+    "test_table_2": {
+      "fields": [
+        "via",
+        "step",
+        "ip",
+        "device_id",
+        "device_type",
+        "os",
+        "ad_url",
+        "mtime",
+        "project_id",
+        "dt"
       ]
     }
   }

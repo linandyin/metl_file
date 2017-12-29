@@ -110,15 +110,22 @@ handle_cast(_Request, State) ->
     {noreply, NewState :: #state{}} |
     {noreply, NewState :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term(), NewState :: #state{}}).
+distribute([]) -> [];
+distribute([H|L]) ->
+    [{_,_,Mag}|_] = mnesia:dirty_read(req,H),
+    #{<<"headers">> := Headers } = jsx:decode(Mag,[return_maps]),
+    AppId = maps:get(<<"app_id">>,Headers),
+    LogType = maps:get(<<"log_type">>,Headers),
+    Process = maps:get({AppId,LogType},maps:from_list(ets:lookup(processes,{AppId,LogType}))),
+    supervisor:start_child(web_write_sup, [binary_to_list(Process)]),
+    erlang:send(list_to_atom(binary_to_list(Process)),{msg,[H]}),
+    distribute(L),
+    ok.
 do_loop() ->
     Keys = mnesia:dirty_all_keys(req),
     if
         erlang:length(Keys) >= 10 ->
-            {Msg1,Msg2} = lists:split((erlang:length(Keys) div 2),Keys),
-            supervisor:start_child(web_write_sup, ["sub_process_1"]),
-            supervisor:start_child(web_write_sup, ["sub_process_2"]),
-            erlang:send(sub_process_1,{msg,Msg1}),
-            erlang:send(sub_process_2,{msg,Msg2}),
+            distribute(Keys),
             erlang:send_after(5000,erlang:self(),loop);
         true -> erlang:send_after(5000,erlang:self(),loop)
     end,
