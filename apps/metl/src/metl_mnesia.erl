@@ -14,7 +14,7 @@
 -record(sequence, {name, seq}).%自增索引表，维护其他表的自增id
 %% API
 -export([
-    do_this_once/0,
+    init_mnesia/0,
     check_init/0,
     create_schema/0,
     create_table_req/0,
@@ -27,7 +27,7 @@
     remove_req_item/1
 ]).
 
-do_this_once() ->
+init_mnesia() ->
     check_init(),
     create_schema(),
     mnesia:create_schema(?DB_NODES),

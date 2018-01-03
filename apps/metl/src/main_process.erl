@@ -127,7 +127,6 @@ distribute([H|L]) ->
     undefined -> supervisor:start_child(web_write_sup, [Process]);
     _ -> ok
     end,
-%%    erlang:send(list_to_atom(Process),{msg,[H]}),
     distribute(L),
     ok.
 do_loop() ->
