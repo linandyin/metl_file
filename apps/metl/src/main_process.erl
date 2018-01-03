@@ -113,18 +113,27 @@ handle_cast(_Request, State) ->
 distribute([]) -> [];
 distribute([H|L]) ->
     [{_,_,Mag}|_] = mnesia:dirty_read(req,H),
-    #{<<"headers">> := Headers } = jsx:decode(Mag,[return_maps]),
+    #{<<"logs">> := Logs, <<"headers">> := Headers } = jsx:decode(Mag,[return_maps]),
     AppId = maps:get(<<"app_id">>,Headers),
     LogType = maps:get(<<"log_type">>,Headers),
-    Process = maps:get({AppId,LogType},maps:from_list(ets:lookup(processes,{AppId,LogType}))),
-    supervisor:start_child(web_write_sup, [binary_to_list(Process)]),
-    erlang:send(list_to_atom(binary_to_list(Process)),{msg,[H]}),
+    Process = lists:concat([binary_to_list(AppId),"/",binary_to_list(LogType)]),
+    Process_Atom = list_to_atom(Process),
+    case ets:info(Process_Atom) of
+        undefined -> ets:new(Process_Atom,[set,named_table,public]);
+        _ -> ok
+    end,
+    ets:insert(Process_Atom,{H,Logs}),
+    case erlang:whereis(Process_Atom) of
+    undefined -> supervisor:start_child(web_write_sup, [Process]);
+    _ -> ok
+    end,
+%%    erlang:send(list_to_atom(Process),{msg,[H]}),
     distribute(L),
     ok.
 do_loop() ->
     Keys = mnesia:dirty_all_keys(req),
     if
-        erlang:length(Keys) >= 10 ->
+        erlang:length(Keys) >= 100 ->
             distribute(Keys),
             erlang:send_after(5000,erlang:self(),loop);
         true -> erlang:send_after(5000,erlang:self(),loop)

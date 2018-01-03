@@ -64,9 +64,12 @@ start_link(Name) ->
     {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term()} | ignore).
 init([]) ->
-%%    Pid = erlang:self(),
-%%    io:format("~p~n",[Pid]),
-%%    register(sub_process_1,Pid),
+    [{_,ProcessName}|_] = erlang:process_info(self()),
+    [AppId|[LogType|_]] = string:tokens(atom_to_list(ProcessName),"/"),
+    erlang:put(app_id,AppId),
+    erlang:put(log_type,LogType),
+    erlang:put(processname,ProcessName),
+    erlang:send_after(1000,erlang:self(),loop),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -88,12 +91,21 @@ content([],_)  -> [<<"\t\n">>];
 content([H1|L1],B) ->
     Temp = maps:get(H1,B),
     [[Temp|[<<"\t">>]]| content(L1,B)].
-
-write_file(L) ->
-    #{<<"logs">> := Logs, <<"headers">> := Headers } = jsx:decode(L,[return_maps]),
-    [H|[]] = Logs,
-    AppId = maps:get(<<"app_id">>,Headers),
-    LogType = maps:get(<<"log_type">>,Headers),
+write_file([]) ->
+    AppId = list_to_binary(erlang:get(app_id)),
+    LogType = list_to_binary(erlang:get(log_type)),
+    Fields = maps:get({AppId,LogType},maps:from_list(ets:lookup(app_log,{AppId,LogType}))),
+    Database = maps:get(<<"database">>,Fields),
+    Table = maps:get(<<"table">>,Fields),
+    DbS = binary_to_list(Database),
+    TbS = binary_to_list(Table),
+    {_,OldS} = maps:get({DbS,TbS},maps:from_list(ets:lookup(file_tb,{DbS,TbS}))),
+    file:sync(OldS),
+    ok;
+write_file([H|L]) ->
+    [Logs|_] = maps:get(H,maps:from_list(ets:lookup(erlang:get(processname),H))),
+    AppId = list_to_binary(erlang:get(app_id)),
+    LogType = list_to_binary(erlang:get(log_type)),
     Fields = maps:get({AppId,LogType},maps:from_list(ets:lookup(app_log,{AppId,LogType}))),
     Database = maps:get(<<"database">>,Fields),
     Table = maps:get(<<"table">>,Fields),
@@ -109,21 +121,24 @@ write_file(L) ->
             {{Year,Month,Date},{Hour,_,_}} = calendar:local_time(),
             Filename = lists:concat([Year,"-",Month,"-",Date,"-",Hour,".csv"]),
             {ok,S} = file:open(lists:concat([DbS,"\\",TbS,"\\",Filename]),[append]),
-            ets:insert(file_tb,{{DbS,TbS},{Filename,S}});
+            ets:insert(file_tb,{{DbS,TbS},{Filename,S}}),
+            file:write(S,content(TableFields,Logs));
         _ ->
             {OldFilename,OldS} = maps:get({DbS,TbS},maps:from_list(ets:lookup(file_tb,{DbS,TbS}))),
             {{Year,Month,Date},{Hour,_,_}} = calendar:local_time(),
             NewFilename = lists:concat([Year,"-",Month,"-",Date,"-",Hour,".csv"]),
             if
                 OldFilename =:= NewFilename ->
-                    file:write(OldS,content(TableFields,H));
+                    file:write(OldS,content(TableFields,Logs));
                 true ->
                     file:close(OldS),
                     ets:delete(file_tb,{DbS,TbS}),
                     {ok,NewS} = file:open(lists:concat([DbS,"\\",TbS,"\\",NewFilename]),[append]),
-                    ets:insert(file_tb,{{DbS,TbS},{NewFilename,NewS}})
+                    ets:insert(file_tb,{{DbS,TbS},{NewFilename,NewS}}),
+                    file:write(NewS,content(TableFields,Logs))
             end
-    end.
+    end,
+    write_file(L).
 
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
@@ -156,15 +171,29 @@ handle_cast(_Request, State) ->
     {noreply, NewState :: #state{}} |
     {noreply, NewState :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term(), NewState :: #state{}}).
-select_data([]) -> [];
-select_data([H|L]) ->
-    [{_,_,Mag}|_] = mnesia:dirty_read(req,H),
-    write_file(Mag),
+delete_datas([]) -> ok;
+delete_datas([H|L]) ->
+    ets:delete(erlang:get(processname),H),
     mnesia:dirty_delete(req,H),
-    select_data(L).
+    delete_datas(L).
 
-handle_info({msg,Keys}, State) ->
-    select_data(Keys),
+select_data(Keys) ->
+    case write_file(Keys) of
+          ok ->delete_datas(Keys);
+          _  -> write_file(Keys)
+    end.
+
+
+do_loop() ->
+    Keys = ets:select(erlang:get(processname),[{{'$1','_'},[],['$1']}]),
+    if
+        erlang:length(Keys) =:= 0 -> ok;
+        true -> select_data(Keys)
+    end,
+    erlang:send_after(5000,erlang:self(),loop).
+
+handle_info(loop, State) ->
+     do_loop(),
     {noreply, State}.
 
 %%--------------------------------------------------------------------

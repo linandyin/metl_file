@@ -26,7 +26,8 @@
     tra_table/4,
     init_table_info/0,
     init_file_tb/0,
-    init_processes/0]).
+    init_processes/0,
+    close_files/1]).
 
 -define(SERVER, ?MODULE).
 
@@ -104,11 +105,25 @@ init_processes() ->
     TableInfoList = maps:keys(TableInfoMaps),
     tra_database(TableInfoList,TableInfoMaps,processes),
     ok.
+close_files([]) -> erlang:send_after(60000,erlang:self(),closeFiles);
+close_files([H|L]) ->
+    {OldFilename,OldS} = maps:get(H,maps:from_list(ets:lookup(file_tb,H))),
+    {{Year,Month,Date},{Hour,_,_}} = calendar:local_time(),
+    NewFilename = lists:concat([Year,"-",Month,"-",Date,"-",Hour,".tsv"]),
+    if
+        OldFilename =:= NewFilename ->
+            ok;
+        true ->
+            file:close(OldS),
+            ets:delete(file_tb,H)
+    end,
+    close_files(L),
+    ok.
 init([]) ->
     init_app_log(),
     init_table_info(),
     init_file_tb(),
-    init_processes(),
+    erlang:send_after(60000,erlang:self(),closeFiles),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -157,7 +172,9 @@ handle_cast(_Request, State) ->
     {noreply, NewState :: #state{}} |
     {noreply, NewState :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term(), NewState :: #state{}}).
-handle_info(_Info, State) ->
+handle_info(closeFiles, State) ->
+    Files = ets:select(file_tb,[{{'$1','_'},[],['$1']}]),
+    close_files(Files),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
