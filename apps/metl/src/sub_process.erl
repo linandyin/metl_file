@@ -64,6 +64,7 @@ start_link(Name) ->
     {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term()} | ignore).
 init([]) ->
+    erlang:send_after(1000,erlang:self(),closeFiles),
     [{_,ProcessName}|_] = erlang:process_info(self()),
     [AppId|[LogType|_]] = string:tokens(atom_to_list(ProcessName),"/"),
     erlang:put(app_id,AppId),
@@ -91,6 +92,7 @@ content([],_)  -> [<<"\t\n">>];
 content([H1|L1],B) ->
     Temp = maps:get(H1,B),
     [[Temp|[<<"\t">>]]| content(L1,B)].
+
 write_file([]) ->
     AppId = list_to_binary(erlang:get(app_id)),
     LogType = list_to_binary(erlang:get(log_type)),
@@ -171,15 +173,17 @@ handle_cast(_Request, State) ->
     {noreply, NewState :: #state{}} |
     {noreply, NewState :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term(), NewState :: #state{}}).
+
 delete_datas([]) -> ok;
 delete_datas([H|L]) ->
     ets:delete(erlang:get(processname),H),
-    mnesia:dirty_delete(req,H),
+%%    mnesia:dirty_delete(req,H),
     delete_datas(L).
 
 select_data(Keys) ->
     case write_file(Keys) of
           ok ->delete_datas(Keys);
+          ok ->ok;
           _  -> write_file(Keys)
     end.
 
@@ -192,8 +196,27 @@ do_loop() ->
     end,
     erlang:send_after(5000,erlang:self(),loop).
 
+close_files([]) -> erlang:send_after(3600000,erlang:self(),closeFiles);
+close_files([H|L]) ->
+    {OldFilename,OldS} = maps:get(H,maps:from_list(ets:lookup(file_tb,H))),
+    {{Year,Month,Date},{Hour,_,_}} = calendar:local_time(),
+    NewFilename = lists:concat([Year,"-",Month,"-",Date,"-",Hour,".tsv"]),
+    if
+        OldFilename =:= NewFilename ->
+            ok;
+        true ->
+            file:close(OldS),
+            ets:delete(file_tb,H)
+    end,
+    close_files(L),
+    ok.
+
 handle_info(loop, State) ->
      do_loop(),
+    {noreply, State};
+handle_info(closeFiles, State) ->
+    Files = ets:select(file_tb,[{{'$1','_'},[],['$1']}]),
+    close_files(Files),
     {noreply, State}.
 
 %%--------------------------------------------------------------------

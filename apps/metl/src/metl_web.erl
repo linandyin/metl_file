@@ -22,6 +22,7 @@ init({tcp, http}, Req, _Opts) ->
 
 handle(Req, State=#state{}) ->
     {ok, Bin, Req2} = cowboy_req:body(Req),
+    %%把数据放入mnesia中
     metl_mnesia:add_req_item(Bin),
     {ok, Req3} = cowboy_req:reply(200, [], [], Req2),
     {ok, Req3, State}.

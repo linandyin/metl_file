@@ -22,8 +22,7 @@ start(_StartType, _StartArgs) ->
         [{env, [{dispatch, Dispatch}]}]
     ),
     metl_mnesia:init_mnesia(),
-    metl_sup:start_link(),
-    web_write_sup:start_link().
+    metl_sup:start_link().
 
 
 %%--------------------------------------------------------------------

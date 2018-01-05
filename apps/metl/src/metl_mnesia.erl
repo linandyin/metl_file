@@ -36,6 +36,7 @@ init_mnesia() ->
     create_table_sequence(),
     create_table_req(),
     ok.
+
 check_init() ->
     %% 检查数据库目录是否正确
     MnesiaDir = mnesia:system_info(directory) ++ "/",
@@ -45,6 +46,7 @@ check_init() ->
         ok ->
             ok
     end.
+
 create_schema() ->
     case mnesia:system_info(extra_db_nodes) of
         [] ->
@@ -62,6 +64,7 @@ create_schema() ->
             mnesia:change_table_copy_type(schema, Node, disc_copies)
         end, ?DB_NODES),
     ok.
+
 create_table_req()->
     case catch mnesia:create_table(req, [
         {disc_copies, ?DB_NODES},
@@ -79,6 +82,7 @@ create_table_req()->
             error_logger:error_msg("~s ~p", [req, R]),
             error
     end.
+
 create_table_sequence()->
     case catch mnesia:create_table(sequence, [
         {disc_copies, ?DB_NODES},
@@ -96,6 +100,7 @@ create_table_sequence()->
             error_logger:error_msg("~s ~p", [sequence, R]),
             error
     end.
+
 wait_for_table(Tabs) when erlang:is_list(Tabs)->
     mnesia:wait_for_tables(Tabs, infinity);
 wait_for_table(Tab) when erlang:is_atom(Tab)->

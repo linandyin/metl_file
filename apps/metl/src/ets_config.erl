@@ -26,8 +26,7 @@
     tra_table/4,
     init_table_info/0,
     init_file_tb/0,
-    init_processes/0,
-    close_files/1]).
+    init_processes/0]).
 
 -define(SERVER, ?MODULE).
 
@@ -73,6 +72,7 @@ tra_table(Key,List,Maps,EtsTable) ->
     ets:insert(EtsTable,{{Key,H},Fileds}),
     tra_table(Key,L,Maps,EtsTable),
     ok.
+
 tra_database([],_,_) -> [];
 tra_database(List,Maps,EtsTable) ->
     [H|L] = List,
@@ -81,6 +81,7 @@ tra_database(List,Maps,EtsTable) ->
     tra_table(H,TableList,TablesMaps,EtsTable),
     tra_database(L,Maps,EtsTable),
     ok.
+
 init_app_log() ->
     ets:new(app_log,[set,named_table,public]),
     {ok,Bin} = file:read_file("app_log.json"),
@@ -88,6 +89,7 @@ init_app_log() ->
     AppLogList = maps:keys(AppLogMaps),
     tra_database(AppLogList,AppLogMaps,app_log),
     ok.
+
 init_table_info() ->
     ets:new(table_info,[set,named_table,public]),
     {ok,Bin} = file:read_file("table_info.json"),
@@ -95,9 +97,11 @@ init_table_info() ->
     TableInfoList = maps:keys(TableInfoMaps),
     tra_database(TableInfoList,TableInfoMaps,table_info),
     ok.
+
 init_file_tb() ->
     ets:new(file_tb,[set,named_table,public]),
     ok.
+
 init_processes() ->
     ets:new(processes,[set,named_table,public]),
     {ok,Bin} = file:read_file("processes.json"),
@@ -105,25 +109,11 @@ init_processes() ->
     TableInfoList = maps:keys(TableInfoMaps),
     tra_database(TableInfoList,TableInfoMaps,processes),
     ok.
-close_files([]) -> erlang:send_after(60000,erlang:self(),closeFiles);
-close_files([H|L]) ->
-    {OldFilename,OldS} = maps:get(H,maps:from_list(ets:lookup(file_tb,H))),
-    {{Year,Month,Date},{Hour,_,_}} = calendar:local_time(),
-    NewFilename = lists:concat([Year,"-",Month,"-",Date,"-",Hour,".tsv"]),
-    if
-        OldFilename =:= NewFilename ->
-            ok;
-        true ->
-            file:close(OldS),
-            ets:delete(file_tb,H)
-    end,
-    close_files(L),
-    ok.
+
 init([]) ->
     init_app_log(),
     init_table_info(),
     init_file_tb(),
-    erlang:send_after(60000,erlang:self(),closeFiles),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -172,9 +162,7 @@ handle_cast(_Request, State) ->
     {noreply, NewState :: #state{}} |
     {noreply, NewState :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term(), NewState :: #state{}}).
-handle_info(closeFiles, State) ->
-    Files = ets:select(file_tb,[{{'$1','_'},[],['$1']}]),
-    close_files(Files),
+handle_info(_Request, State) ->
     {noreply, State}.
 
 %%--------------------------------------------------------------------

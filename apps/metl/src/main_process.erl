@@ -110,8 +110,9 @@ handle_cast(_Request, State) ->
     {noreply, NewState :: #state{}} |
     {noreply, NewState :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term(), NewState :: #state{}}).
-distribute([]) -> [];
+distribute([]) -> ok;
 distribute([H|L]) ->
+%%    io:format("~p~n",[mnesia:dirty_read(req,H)]),
     [{_,_,Mag}|_] = mnesia:dirty_read(req,H),
     #{<<"logs">> := Logs, <<"headers">> := Headers } = jsx:decode(Mag,[return_maps]),
     AppId = maps:get(<<"app_id">>,Headers),
@@ -127,20 +128,33 @@ distribute([H|L]) ->
     undefined -> supervisor:start_child(web_write_sup, [Process]);
     _ -> ok
     end,
-    distribute(L),
-    ok.
+    distribute(L).
+
+delete_datas([]) -> ok;
+delete_datas([H|L]) ->
+%%    ets:delete(erlang:get(processname),H),
+    mnesia:dirty_delete(req,H),
+    delete_datas(L).
+
 do_loop() ->
     Keys = mnesia:dirty_all_keys(req),
     if
-        erlang:length(Keys) >= 100 ->
-            distribute(Keys),
+        erlang:length(Keys) >= 1000 ->
+            Response = distribute(Keys),
+            case Response of
+                  ok -> delete_datas(Keys);
+                  _  -> error_logger:error_msg("Fail to delete datas in ~p~n",[mnesia])
+            end,
             erlang:send_after(5000,erlang:self(),loop);
         true -> erlang:send_after(5000,erlang:self(),loop)
     end,
     ok.
+
+
 handle_info(loop, State) ->
     do_loop(),
     {noreply, State}.
+
 
 %%--------------------------------------------------------------------
 %% @private
