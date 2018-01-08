@@ -112,29 +112,26 @@ handle_cast(_Request, State) ->
     {stop, Reason :: term(), NewState :: #state{}}).
 distribute([]) -> ok;
 distribute([H|L]) ->
-%%    io:format("~p~n",[mnesia:dirty_read(req,H)]),
-    [{_,_,Mag}|_] = mnesia:dirty_read(req,H),
-    #{<<"logs">> := Logs, <<"headers">> := Headers } = jsx:decode(Mag,[return_maps]),
-    AppId = maps:get(<<"app_id">>,Headers),
-    LogType = maps:get(<<"log_type">>,Headers),
-    Process = lists:concat([binary_to_list(AppId),"/",binary_to_list(LogType)]),
-    Process_Atom = list_to_atom(Process),
-    case ets:info(Process_Atom) of
-        undefined -> ets:new(Process_Atom,[set,named_table,public]);
-        _ -> ok
-    end,
-    ets:insert(Process_Atom,{H,Logs}),
-    case erlang:whereis(Process_Atom) of
-    undefined -> supervisor:start_child(web_write_sup, [Process]);
-    _ -> ok
+    case mnesia:dirty_read(req,H) of
+        [{_,_,Mag}|_]  ->
+            #{<<"logs">> := Logs, <<"headers">> := Headers } = jsx:decode(Mag,[return_maps]),
+            AppId = maps:get(<<"app_id">>,Headers),
+            LogType = maps:get(<<"log_type">>,Headers),
+            Process = lists:concat([binary_to_list(AppId),"/",binary_to_list(LogType)]),
+            Process_Atom = list_to_atom(Process),
+            case ets:info(Process_Atom) of
+                undefined -> ets:new(Process_Atom,[set,named_table,public]);
+                _ -> ok
+            end,
+            ets:insert(Process_Atom,{H,Logs}),
+            case erlang:whereis(Process_Atom) of
+                undefined -> supervisor:start_child(web_write_sup, [Process]);
+                _ -> ok
+            end;
+        _ -> error_logger:error_msg("data duplication ~p~n",[])
     end,
     distribute(L).
 
-delete_datas([]) -> ok;
-delete_datas([H|L]) ->
-%%    ets:delete(erlang:get(processname),H),
-    mnesia:dirty_delete(req,H),
-    delete_datas(L).
 
 do_loop() ->
     Keys = mnesia:dirty_all_keys(req),
@@ -142,8 +139,8 @@ do_loop() ->
         erlang:length(Keys) >= 1000 ->
             Response = distribute(Keys),
             case Response of
-                  ok -> delete_datas(Keys);
-                  _  -> error_logger:error_msg("Fail to delete datas in ~p~n",[mnesia])
+                  ok -> ok;
+                  _  -> error_logger:error_msg("Fail to distribute ~p~n",[])
             end,
             erlang:send_after(5000,erlang:self(),loop);
         true -> erlang:send_after(5000,erlang:self(),loop)

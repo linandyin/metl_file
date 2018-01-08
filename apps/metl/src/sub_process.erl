@@ -177,7 +177,7 @@ handle_cast(_Request, State) ->
 delete_datas([]) -> ok;
 delete_datas([H|L]) ->
     ets:delete(erlang:get(processname),H),
-%%    mnesia:dirty_delete(req,H),
+    mnesia:dirty_delete(req,H),
     delete_datas(L).
 
 select_data(Keys) ->
