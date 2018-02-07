@@ -116,13 +116,13 @@ write_file([H|L]) ->
     TableInfo = maps:get({Database,Table},maps:from_list(ets:lookup(table_info,{Database,Table}))),
     TableFields = maps:get(<<"fields">>,TableInfo),
     file:make_dir(DbS),
-    file:make_dir(lists:concat([DbS,"\\",TbS])),
+    file:make_dir(lists:concat([DbS,"/",TbS])),
     List = ets:lookup(file_tb,{DbS,TbS}),
     case List of
         [] ->
             {{Year,Month,Date},{Hour,_,_}} = calendar:local_time(),
             Filename = lists:concat([Year,"-",Month,"-",Date,"-",Hour,".csv"]),
-            {ok,S} = file:open(lists:concat([DbS,"\\",TbS,"\\",Filename]),[append]),
+            {ok,S} = file:open(lists:concat([DbS,"/",TbS,"/",Filename]),[append]),
             ets:insert(file_tb,{{DbS,TbS},{Filename,S}}),
             file:write(S,content(TableFields,Logs));
         _ ->
@@ -135,7 +135,7 @@ write_file([H|L]) ->
                 true ->
                     file:close(OldS),
                     ets:delete(file_tb,{DbS,TbS}),
-                    {ok,NewS} = file:open(lists:concat([DbS,"\\",TbS,"\\",NewFilename]),[append]),
+                    {ok,NewS} = file:open(lists:concat([DbS,"/",TbS,"/",NewFilename]),[append]),
                     ets:insert(file_tb,{{DbS,TbS},{NewFilename,NewS}}),
                     file:write(NewS,content(TableFields,Logs))
             end
@@ -183,7 +183,6 @@ delete_datas([H|L]) ->
 select_data(Keys) ->
     case write_file(Keys) of
           ok ->delete_datas(Keys);
-          ok ->ok;
           _  -> write_file(Keys)
     end.
 
